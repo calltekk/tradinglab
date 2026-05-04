@@ -8,8 +8,6 @@ def run_backtest(
 ) -> pd.DataFrame:
     df = df.copy().dropna()
 
-    # Important: use yesterday's signal for today's return.
-    # This avoids lookahead bias.
     df["position"] = df["signal"].shift(1).fillna(0)
 
     df["market_return"] = df["close"].pct_change().fillna(0)

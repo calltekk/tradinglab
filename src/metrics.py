@@ -7,6 +7,9 @@ def calculate_metrics(df: pd.DataFrame) -> dict:
 
     years = (df.index[-1] - df.index[0]).days / 365.25
 
+    if years <= 0:
+        years = 1 / 365.25
+
     annual_return = (1 + total_return) ** (1 / years) - 1
 
     annual_volatility = df["strategy_return"].std() * np.sqrt(252)

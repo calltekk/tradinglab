@@ -1,7 +1,7 @@
 import pandas as pd
 import streamlit as st
 
-from src.data import download_price_data
+from src.data import download_price_data, get_latest_price
 from src.indicators import add_moving_averages, add_rsi
 from src.strategies import moving_average_strategy, rsi_mean_reversion_strategy
 from src.backtest import run_backtest
@@ -9,8 +9,12 @@ from src.metrics import calculate_metrics
 from src.momentum import rank_assets_by_momentum
 
 
-def format_currency(value: float) -> str:
-    return f"£{value:,.0f}"
+def format_currency(value: float, currency: str = "£") -> str:
+    return f"{currency}{value:,.2f}"
+
+
+def format_currency_rounded(value: float, currency: str = "£") -> str:
+    return f"{currency}{value:,.0f}"
 
 
 def format_percent(value: float) -> str:
@@ -36,6 +40,10 @@ with st.sidebar:
     start_date = st.date_input("Start date", value=pd.to_datetime("2015-01-01"))
     end_date = st.date_input("End date", value=pd.Timestamp.today())
 
+    st.caption(
+        f"UK date range: {start_date.strftime('%d/%m/%Y')} → {end_date.strftime('%d/%m/%Y')}"
+    )
+
     initial_capital = st.number_input(
         "Initial capital (£)",
         min_value=100,
@@ -49,12 +57,32 @@ with st.sidebar:
         value=0.001,
         step=0.0005,
         format="%.4f",
+        help="0.001 means 0.1% per trade.",
     )
 
 
 if mode == "Single Asset Strategy":
     with st.sidebar:
-        ticker = st.text_input("Ticker", "GLD").upper()
+        preset = st.selectbox(
+            "Quick select",
+            [
+                "Custom",
+                "Gold ETF (GLD)",
+                "S&P 500 ETF (SPY)",
+                "Nasdaq 100 ETF (QQQ)",
+                "FTSE 100 Index (^FTSE)",
+                "Bitcoin (BTC-USD)",
+                "Ethereum (ETH-USD)",
+                "BP (BP.L)",
+                "HSBC (HSBA.L)",
+                "AstraZeneca (AZN.L)",
+            ],
+        )
+
+        if preset == "Custom":
+            ticker = st.text_input("Ticker", "GLD").upper()
+        else:
+            ticker = preset.split("(")[-1].replace(")", "").upper()
 
         strategy = st.selectbox(
             "Strategy",
@@ -73,6 +101,14 @@ if mode == "Single Asset Strategy":
             oversold = st.slider("Oversold", 5, 45, 30)
             exit_level = st.slider("Exit level", 40, 80, 55)
 
+    latest_price = get_latest_price(ticker)
+
+    if latest_price is not None:
+        st.metric("Latest Market Price", f"{latest_price:,.2f}")
+        st.caption(
+            "Price currency depends on the asset. BTC-USD is in USD. UK shares ending in .L are usually in GBX/pence on Yahoo Finance."
+        )
+
     df = download_price_data(
         ticker=ticker,
         start=str(start_date),
@@ -80,7 +116,7 @@ if mode == "Single Asset Strategy":
     )
 
     if df.empty:
-        st.error("No data found.")
+        st.error("No data found. Try BTC-USD for Bitcoin, ETH-USD for Ethereum, or BP.L for UK shares.")
         st.stop()
 
     if strategy == "Moving Average Crossover":
@@ -137,7 +173,7 @@ if mode == "Single Asset Strategy":
 
     c1, c2, c3, c4, c5, c6 = st.columns(6)
 
-    c1.metric("Portfolio Value", format_currency(final_value))
+    c1.metric("Portfolio Value", format_currency_rounded(final_value))
     c2.metric("Total Return", format_percent(metrics["total_return"]))
     c3.metric("Annual Return", format_percent(metrics["annual_return"]))
     c4.metric("Volatility", format_percent(metrics["annual_volatility"]))
@@ -148,12 +184,25 @@ if mode == "Single Asset Strategy":
 
     st.write(
         f"""
-        Starting with **{format_currency(initial_capital)}**, this strategy would have ended at
-        approximately **{format_currency(final_value)}**.
+        Starting with **{format_currency_rounded(initial_capital)}**, this strategy would have ended at
+        approximately **{format_currency_rounded(final_value)}**.
 
         The worst historical drop was **{format_percent(metrics["max_drawdown"])}**.
 
         It made **{metrics["trades"]} trades** over the selected period.
+        """
+    )
+
+    st.subheader("How to read this like a pro")
+
+    st.markdown(
+        """
+        - **Total Return**: how much the strategy made overall.
+        - **Annual Return**: average yearly growth.
+        - **Volatility**: how rough the ride was.
+        - **Sharpe**: return compared with risk. Above 1 is strong, 0.5–1 is decent, below 0.5 is weak.
+        - **Max Drawdown**: the worst fall from a previous high.
+        - **Trades**: how many buy/sell changes happened.
         """
     )
 
@@ -192,7 +241,7 @@ elif mode == "Multi-Asset Momentum Ranking":
     with st.sidebar:
         tickers_input = st.text_area(
             "Assets",
-            value="SPY, QQQ, IWM, TLT, GLD",
+            value="SPY, QQQ, IWM, TLT, GLD, BTC-USD, ETH-USD, ^FTSE",
         )
 
         momentum_days = st.slider("Momentum lookback days", 30, 252, 126)
@@ -223,12 +272,17 @@ elif mode == "Multi-Asset Momentum Ranking":
         f"{best_asset['ticker']} ({best_asset['momentum']:.2%})"
     )
 
+    if best_asset["momentum"] > 0:
+        st.success("Decision: INVEST in the top-ranked asset.")
+    else:
+        st.error("Decision: STAY IN CASH. No asset has positive momentum.")
+
     st.info(
         """
         This ranks assets by recent performance.
 
-        The idea is simple: instead of asking whether one asset is good,
-        compare several assets and focus on the strongest one.
+        Instead of asking whether one asset is good, this compares several assets
+        and highlights the strongest one.
 
         This is not a prediction. It is a momentum ranking tool.
         """
@@ -243,3 +297,15 @@ elif mode == "Multi-Asset Momentum Ranking":
     st.subheader("Momentum Chart")
     chart_data = ranking.set_index("ticker")["momentum"]
     st.bar_chart(chart_data)
+
+    st.subheader("How to use this")
+
+    st.markdown(
+        """
+        - Look at the **rank 1 asset**.
+        - Check whether its momentum is positive.
+        - If positive, the strategy favours that asset.
+        - If negative, the strategy favours cash.
+        - Re-check weekly or monthly rather than every hour.
+        """
+    )
