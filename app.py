@@ -6,32 +6,38 @@ from src.indicators import add_moving_averages, add_rsi
 from src.strategies import moving_average_strategy, rsi_mean_reversion_strategy
 from src.backtest import run_backtest
 from src.metrics import calculate_metrics
+from src.momentum import rank_assets_by_momentum
+
+
+def format_currency(value: float) -> str:
+    return f"£{value:,.0f}"
+
+
+def format_percent(value: float) -> str:
+    return f"{value:.2%}"
 
 
 st.set_page_config(page_title="Trading Lab", layout="wide")
 
 st.title("Trading Lab")
-st.caption("Research strategies before risking real money.")
-
+st.caption("A simple research tool for testing trading strategies before risking real money.")
 
 with st.sidebar:
     st.header("Settings")
 
-    ticker = st.text_input("Ticker", "SPY").upper()
+    mode = st.selectbox(
+        "Mode",
+        [
+            "Single Asset Strategy",
+            "Multi-Asset Momentum Ranking",
+        ],
+    )
 
     start_date = st.date_input("Start date", value=pd.to_datetime("2015-01-01"))
     end_date = st.date_input("End date", value=pd.Timestamp.today())
 
-    strategy = st.selectbox(
-        "Strategy",
-        [
-            "Moving Average Crossover",
-            "RSI Mean Reversion",
-        ],
-    )
-
     initial_capital = st.number_input(
-        "Initial capital",
+        "Initial capital (£)",
         min_value=100,
         value=10_000,
         step=500,
@@ -45,95 +51,195 @@ with st.sidebar:
         format="%.4f",
     )
 
-    if strategy == "Moving Average Crossover":
-        short_window = st.slider("Short MA", 5, 100, 20)
-        long_window = st.slider("Long MA", 20, 300, 100)
 
-    if strategy == "RSI Mean Reversion":
-        rsi_window = st.slider("RSI window", 5, 50, 14)
-        oversold = st.slider("Oversold", 5, 45, 30)
-        exit_level = st.slider("Exit level", 40, 80, 55)
+if mode == "Single Asset Strategy":
+    with st.sidebar:
+        ticker = st.text_input("Ticker", "GLD").upper()
 
-
-df = download_price_data(
-    ticker=ticker,
-    start=str(start_date),
-    end=str(end_date),
-)
-
-if df.empty:
-    st.error("No data found.")
-    st.stop()
-
-
-if strategy == "Moving Average Crossover":
-    df = add_moving_averages(df, short_window, long_window)
-    df = moving_average_strategy(df, short_window, long_window)
-
-elif strategy == "RSI Mean Reversion":
-    df = add_rsi(df, rsi_window)
-    df = rsi_mean_reversion_strategy(
-        df,
-        rsi_col=f"rsi_{rsi_window}",
-        oversold=oversold,
-        exit_level=exit_level,
-    )
-
-
-results = run_backtest(
-    df=df,
-    initial_capital=initial_capital,
-    transaction_cost=transaction_cost,
-)
-
-metrics = calculate_metrics(results)
-
-
-c1, c2, c3, c4, c5, c6 = st.columns(6)
-
-c1.metric("Total Return", f"{metrics['total_return']:.2%}")
-c2.metric("Annual Return", f"{metrics['annual_return']:.2%}")
-c3.metric("Volatility", f"{metrics['annual_volatility']:.2%}")
-c4.metric("Sharpe", f"{metrics['sharpe_ratio']:.2f}")
-c5.metric("Max Drawdown", f"{metrics['max_drawdown']:.2%}")
-c6.metric("Trades", metrics["trades"])
-
-
-latest_signal = int(results["signal"].iloc[-1])
-
-st.subheader("Latest Signal")
-
-if latest_signal == 1:
-    st.success(f"{ticker}: BUY / HOLD")
-else:
-    st.warning(f"{ticker}: CASH / EXIT")
-
-
-st.subheader("Equity Curve")
-st.line_chart(results[["strategy_equity", "buy_hold_equity"]])
-
-
-st.subheader("Drawdown")
-st.line_chart(results["drawdown"])
-
-
-st.subheader("Price")
-
-if strategy == "Moving Average Crossover":
-    st.line_chart(
-        results[
+        strategy = st.selectbox(
+            "Strategy",
             [
-                "close",
-                f"ma_{short_window}",
-                f"ma_{long_window}",
-            ]
-        ]
+                "Moving Average Crossover",
+                "RSI Mean Reversion",
+            ],
+        )
+
+        if strategy == "Moving Average Crossover":
+            short_window = st.slider("Short MA", 5, 100, 20)
+            long_window = st.slider("Long MA", 20, 300, 100)
+
+        if strategy == "RSI Mean Reversion":
+            rsi_window = st.slider("RSI window", 5, 50, 14)
+            oversold = st.slider("Oversold", 5, 45, 30)
+            exit_level = st.slider("Exit level", 40, 80, 55)
+
+    df = download_price_data(
+        ticker=ticker,
+        start=str(start_date),
+        end=str(end_date),
     )
 
-elif strategy == "RSI Mean Reversion":
-    st.line_chart(results["close"])
-    st.line_chart(results[f"rsi_{rsi_window}"])
+    if df.empty:
+        st.error("No data found.")
+        st.stop()
+
+    if strategy == "Moving Average Crossover":
+        df = add_moving_averages(df, short_window, long_window)
+        df = moving_average_strategy(df, short_window, long_window)
+
+        strategy_explanation = f"""
+        This strategy compares two moving averages:
+
+        - Short moving average: {short_window} days
+        - Long moving average: {long_window} days
+
+        It buys when the short moving average is above the long moving average.
+        It exits when the short moving average falls below the long moving average.
+        """
+
+    elif strategy == "RSI Mean Reversion":
+        df = add_rsi(df, rsi_window)
+        df = rsi_mean_reversion_strategy(
+            df,
+            rsi_col=f"rsi_{rsi_window}",
+            oversold=oversold,
+            exit_level=exit_level,
+        )
+
+        strategy_explanation = f"""
+        This strategy uses RSI, which measures whether an asset may be overbought or oversold.
+
+        - Buy when RSI falls below {oversold}
+        - Exit when RSI rises above {exit_level}
+
+        It tries to buy weakness and sell after recovery.
+        """
+
+    results = run_backtest(
+        df=df,
+        initial_capital=initial_capital,
+        transaction_cost=transaction_cost,
+    )
+
+    metrics = calculate_metrics(results)
+
+    latest_signal = int(results["signal"].iloc[-1])
+    final_value = results["strategy_equity"].iloc[-1]
+
+    st.subheader("What should I do?")
+
+    if latest_signal == 1:
+        st.success(f"{ticker}: BUY / HOLD — the strategy says to be invested.")
+    else:
+        st.error(f"{ticker}: CASH / EXIT — the strategy says not to be invested.")
+
+    st.info(strategy_explanation)
+
+    c1, c2, c3, c4, c5, c6 = st.columns(6)
+
+    c1.metric("Portfolio Value", format_currency(final_value))
+    c2.metric("Total Return", format_percent(metrics["total_return"]))
+    c3.metric("Annual Return", format_percent(metrics["annual_return"]))
+    c4.metric("Volatility", format_percent(metrics["annual_volatility"]))
+    c5.metric("Sharpe", f"{metrics['sharpe_ratio']:.2f}")
+    c6.metric("Max Drawdown", format_percent(metrics["max_drawdown"]))
+
+    st.subheader("Plain English Summary")
+
+    st.write(
+        f"""
+        Starting with **{format_currency(initial_capital)}**, this strategy would have ended at
+        approximately **{format_currency(final_value)}**.
+
+        The worst historical drop was **{format_percent(metrics["max_drawdown"])}**.
+
+        It made **{metrics["trades"]} trades** over the selected period.
+        """
+    )
+
+    st.subheader("Equity Curve")
+    st.caption("This compares your strategy against simply buying and holding the asset.")
+    st.line_chart(results[["strategy_equity", "buy_hold_equity"]])
+
+    st.subheader("Drawdown")
+    st.caption("This shows the worst dips from previous highs. Lower is worse.")
+    st.line_chart(results["drawdown"])
+
+    st.subheader("Price and Indicators")
+
+    if strategy == "Moving Average Crossover":
+        st.line_chart(
+            results[
+                [
+                    "close",
+                    f"ma_{short_window}",
+                    f"ma_{long_window}",
+                ]
+            ]
+        )
+
+    elif strategy == "RSI Mean Reversion":
+        st.line_chart(results["close"])
+        st.line_chart(results[f"rsi_{rsi_window}"])
+
+    st.subheader("Recent Data")
+    recent = results.tail(30).copy()
+    recent.index = recent.index.strftime("%d/%m/%Y")
+    st.dataframe(recent, use_container_width=True)
 
 
-st.subheader("Recent Data")
-st.dataframe(results.tail(30), use_container_width=True)
+elif mode == "Multi-Asset Momentum Ranking":
+    with st.sidebar:
+        tickers_input = st.text_area(
+            "Assets",
+            value="SPY, QQQ, IWM, TLT, GLD",
+        )
+
+        momentum_days = st.slider("Momentum lookback days", 30, 252, 126)
+
+    tickers = [
+        ticker.strip().upper()
+        for ticker in tickers_input.split(",")
+        if ticker.strip()
+    ]
+
+    st.subheader("Top Asset Right Now")
+
+    ranking = rank_assets_by_momentum(
+        tickers=tickers,
+        start=str(start_date),
+        end=str(end_date),
+        lookback_days=momentum_days,
+    )
+
+    if ranking.empty:
+        st.error("No ranking data found.")
+        st.stop()
+
+    best_asset = ranking.iloc[0]
+
+    st.success(
+        f"Best asset by {momentum_days}-day momentum: "
+        f"{best_asset['ticker']} ({best_asset['momentum']:.2%})"
+    )
+
+    st.info(
+        """
+        This ranks assets by recent performance.
+
+        The idea is simple: instead of asking whether one asset is good,
+        compare several assets and focus on the strongest one.
+
+        This is not a prediction. It is a momentum ranking tool.
+        """
+    )
+
+    display_ranking = ranking.copy()
+    display_ranking["momentum"] = display_ranking["momentum"].map(lambda x: f"{x:.2%}")
+    display_ranking["latest_price"] = display_ranking["latest_price"].map(lambda x: f"{x:,.2f}")
+
+    st.dataframe(display_ranking, use_container_width=True)
+
+    st.subheader("Momentum Chart")
+    chart_data = ranking.set_index("ticker")["momentum"]
+    st.bar_chart(chart_data)
