@@ -25,24 +25,19 @@ def investment_decision(
     metrics: dict,
     results: pd.DataFrame,
     latest_signal: int,
-) -> tuple[bool, list[str]]:
+) -> tuple[str, list[str]]:
     """
-    Practical trading decision.
+    3-level trading decision:
 
-    This is intentionally not too strict.
-    It is designed to say INVEST when:
-    - the current signal is active
-    - the strategy made money historically
-    - risk is not completely insane
-
-    This does not guarantee profit.
-    It is only a research filter.
+    INVEST NOW = signal is active and metrics are acceptable.
+    WATCH = metrics are acceptable, but signal is currently cash.
+    AVOID = risk/reward is not acceptable.
     """
 
     reasons = []
 
     if latest_signal != 1:
-        reasons.append("Latest signal is CASH / EXIT.")
+        reasons.append("Not currently in position. Waiting for entry signal.")
 
     if metrics["total_return"] <= 0:
         reasons.append("Strategy did not make money overall.")
@@ -53,15 +48,29 @@ def investment_decision(
     if metrics["sharpe_ratio"] < 0.2:
         reasons.append("Sharpe ratio is too low (< 0.20).")
 
-    if metrics["max_drawdown"] <= -0.60:
-        reasons.append("Max drawdown is worse than -60%.")
+    if metrics["max_drawdown"] <= -0.70:
+        reasons.append("Max drawdown is worse than -70%.")
 
     if metrics["annual_volatility"] >= 1.00:
         reasons.append("Annual volatility is extremely high (> 100%).")
 
-    invest = len(reasons) == 0
+    critical_reasons = [
+        reason for reason in reasons
+        if "did not make money" in reason
+        or "Annual return" in reason
+        or "Sharpe" in reason
+        or "drawdown" in reason
+        or "volatility" in reason
+    ]
 
-    return invest, reasons
+    if len(critical_reasons) > 0:
+        decision = "AVOID"
+    elif latest_signal == 1:
+        decision = "INVEST NOW"
+    else:
+        decision = "WATCH"
+
+    return decision, reasons
 
 
 def display_market_price(ticker: str, latest_price: float | None) -> None:
@@ -219,18 +228,25 @@ if mode == "Single Asset Strategy":
     latest_signal = int(results["signal"].iloc[-1])
     final_value = results["strategy_equity"].iloc[-1]
 
-    invest, reasons = investment_decision(metrics, results, latest_signal)
+    decision, reasons = investment_decision(metrics, results, latest_signal)
 
     st.subheader("What should I do?")
 
-    if invest:
-        st.success(f"{ticker}: INVEST — current signal is active and risk/reward is acceptable.")
+    if decision == "INVEST NOW":
+        st.success(f"{ticker}: INVEST NOW — signal is active and risk/reward is acceptable.")
+    elif decision == "WATCH":
+        st.warning(f"{ticker}: WATCH — metrics are acceptable, but the strategy is waiting for an entry signal.")
     else:
-        st.error(f"{ticker}: DON'T INVEST — current setup is not strong enough.")
+        st.error(f"{ticker}: AVOID — current setup is not strong enough.")
 
-        with st.expander("Why?"):
+    with st.expander("Why?"):
+        if reasons:
             for reason in reasons:
                 st.write(f"- {reason}")
+        else:
+            st.write("- Signal is active.")
+            st.write("- Strategy made money historically.")
+            st.write("- Risk metrics are acceptable.")
 
     st.warning(
         "This is not financial advice. This app is a backtesting/research tool only. "
