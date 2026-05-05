@@ -27,18 +27,16 @@ def investment_decision(
     latest_signal: int,
 ) -> tuple[bool, list[str]]:
     """
-    Decides whether the strategy is worth investing in.
+    Practical trading decision.
 
-    This is different from simply checking whether the latest signal is 1.
-    A signal only means the strategy is currently long.
+    This is intentionally not too strict.
+    It is designed to say INVEST when:
+    - the current signal is active
+    - the strategy made money historically
+    - risk is not completely insane
 
-    The decision now checks:
-    - Current signal
-    - Annual return
-    - Sharpe ratio
-    - Max drawdown
-    - Volatility
-    - Strategy performance versus buy and hold
+    This does not guarantee profit.
+    It is only a research filter.
     """
 
     reasons = []
@@ -46,23 +44,20 @@ def investment_decision(
     if latest_signal != 1:
         reasons.append("Latest signal is CASH / EXIT.")
 
+    if metrics["total_return"] <= 0:
+        reasons.append("Strategy did not make money overall.")
+
     if metrics["annual_return"] <= 0:
         reasons.append("Annual return is not positive.")
 
-    if metrics["sharpe_ratio"] < 0.4:
-        reasons.append("Sharpe ratio is too low (< 0.40).")
+    if metrics["sharpe_ratio"] < 0.2:
+        reasons.append("Sharpe ratio is too low (< 0.20).")
 
-    if metrics["max_drawdown"] <= -0.50:
-        reasons.append("Max drawdown is worse than -50%.")
+    if metrics["max_drawdown"] <= -0.60:
+        reasons.append("Max drawdown is worse than -60%.")
 
-    if metrics["annual_volatility"] >= 0.80:
-        reasons.append("Annual volatility is extremely high (> 80%).")
-
-    strategy_final = results["strategy_equity"].iloc[-1]
-    buy_hold_final = results["buy_hold_equity"].iloc[-1]
-
-    if strategy_final < buy_hold_final * 0.8:
-        reasons.append("Strategy significantly underperforms buy & hold.")
+    if metrics["annual_volatility"] >= 1.00:
+        reasons.append("Annual volatility is extremely high (> 100%).")
 
     invest = len(reasons) == 0
 
@@ -229,13 +224,18 @@ if mode == "Single Asset Strategy":
     st.subheader("What should I do?")
 
     if invest:
-        st.success(f"{ticker}: INVEST — signal is active and risk/reward metrics are acceptable.")
+        st.success(f"{ticker}: INVEST — current signal is active and risk/reward is acceptable.")
     else:
-        st.error(f"{ticker}: DON'T INVEST — strategy risk/reward is not strong enough.")
+        st.error(f"{ticker}: DON'T INVEST — current setup is not strong enough.")
 
         with st.expander("Why?"):
             for reason in reasons:
                 st.write(f"- {reason}")
+
+    st.warning(
+        "This is not financial advice. This app is a backtesting/research tool only. "
+        "Use small position sizes and never risk money you cannot afford to lose."
+    )
 
     st.info(strategy_explanation)
 
@@ -344,6 +344,10 @@ elif mode == "Multi-Asset Momentum Ranking":
         st.success("Decision: INVEST in the top-ranked asset.")
     else:
         st.error("Decision: STAY IN CASH. No asset has positive momentum.")
+
+    st.warning(
+        "This is not financial advice. This app is a backtesting/research tool only."
+    )
 
     st.info(
         """
