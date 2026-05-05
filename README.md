@@ -10,6 +10,13 @@ This is **not magic**. This is **math, finance, and Python**, working together s
 
 ---
 
+## Screenshots
+
+![Dashboard](screenshots/Dashboard.png)
+![Equity](screenshots/Equitycurve.png)
+![Drawdown](screenshots/Drawdown.png)
+![Live Data Table](screenshots/Data.png)
+
 ## Features
 
 ### Single-asset strategies
