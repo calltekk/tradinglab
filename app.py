@@ -21,6 +21,25 @@ def format_percent(value: float) -> str:
     return f"{value:.2%}"
 
 
+def display_market_price(ticker: str, latest_price: float | None) -> None:
+    if latest_price is None:
+        st.warning("Latest price unavailable.")
+        return
+
+    if ticker.endswith(".L") or ticker.startswith("^FTSE"):
+        st.metric("Latest Market Price", f"{latest_price:,.2f} GBX")
+        st.caption(
+            f"Approx share price: £{latest_price / 100:,.2f}. "
+            "UK shares on Yahoo Finance are usually shown in GBX/pence and may be delayed."
+        )
+    elif ticker.endswith("-USD"):
+        st.metric("Latest Market Price", f"${latest_price:,.2f}")
+        st.caption("Crypto prices such as BTC-USD are shown in USD.")
+    else:
+        st.metric("Latest Market Price", f"${latest_price:,.2f}")
+        st.caption("US-listed assets are usually shown in USD.")
+
+
 st.set_page_config(page_title="Trading Lab", layout="wide")
 
 st.title("Trading Lab")
@@ -102,12 +121,7 @@ if mode == "Single Asset Strategy":
             exit_level = st.slider("Exit level", 40, 80, 55)
 
     latest_price = get_latest_price(ticker)
-
-    if latest_price is not None:
-        st.metric("Latest Market Price", f"{latest_price:,.2f}")
-        st.caption(
-            "Price currency depends on the asset. BTC-USD is in USD. UK shares ending in .L are usually in GBX/pence on Yahoo Finance."
-        )
+    display_market_price(ticker, latest_price)
 
     df = download_price_data(
         ticker=ticker,
@@ -289,8 +303,20 @@ elif mode == "Multi-Asset Momentum Ranking":
     )
 
     display_ranking = ranking.copy()
+
+    def format_price(row):
+        ticker_value = row["ticker"]
+        price = row["latest_price"]
+
+        if ticker_value.endswith(".L") or ticker_value.startswith("^FTSE"):
+            return f"{price:,.2f} GBX"
+        elif ticker_value.endswith("-USD"):
+            return f"${price:,.2f}"
+        else:
+            return f"${price:,.2f}"
+
+    display_ranking["latest_price"] = display_ranking.apply(format_price, axis=1)
     display_ranking["momentum"] = display_ranking["momentum"].map(lambda x: f"{x:.2%}")
-    display_ranking["latest_price"] = display_ranking["latest_price"].map(lambda x: f"{x:,.2f}")
 
     st.dataframe(display_ranking, use_container_width=True)
 
