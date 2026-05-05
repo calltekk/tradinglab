@@ -21,6 +21,37 @@ def format_percent(value: float) -> str:
     return f"{value:.2%}"
 
 
+def investment_decision(metrics: dict, latest_signal: int) -> tuple[bool, list[str]]:
+    """
+    Decides whether the strategy is worth investing in.
+
+    This is different from simply checking whether the latest signal is 1.
+    A signal only means the strategy is currently long.
+    This function checks whether the strategy has acceptable risk/reward.
+    """
+
+    reasons = []
+
+    if latest_signal != 1:
+        reasons.append("Latest signal is CASH / EXIT.")
+
+    if metrics["annual_return"] <= 0:
+        reasons.append("Annual return is not positive.")
+
+    if metrics["sharpe_ratio"] < 0.7:
+        reasons.append("Sharpe ratio is below 0.70.")
+
+    if metrics["max_drawdown"] <= -0.35:
+        reasons.append("Max drawdown is worse than -35%.")
+
+    if metrics["annual_volatility"] >= 0.60:
+        reasons.append("Annual volatility is above 60%.")
+
+    invest = len(reasons) == 0
+
+    return invest, reasons
+
+
 def display_market_price(ticker: str, latest_price: float | None) -> None:
     if latest_price is None:
         st.warning("Latest price unavailable.")
@@ -176,12 +207,18 @@ if mode == "Single Asset Strategy":
     latest_signal = int(results["signal"].iloc[-1])
     final_value = results["strategy_equity"].iloc[-1]
 
+    invest, reasons = investment_decision(metrics, latest_signal)
+
     st.subheader("What should I do?")
 
-    if latest_signal == 1:
-        st.success(f"{ticker}: BUY / HOLD — the strategy says to be invested.")
+    if invest:
+        st.success(f"{ticker}: INVEST — signal is active and risk/reward metrics are acceptable.")
     else:
-        st.error(f"{ticker}: CASH / EXIT — the strategy says not to be invested.")
+        st.error(f"{ticker}: DON'T INVEST — strategy risk/reward is not strong enough.")
+
+        with st.expander("Why?"):
+            for reason in reasons:
+                st.write(f"- {reason}")
 
     st.info(strategy_explanation)
 
