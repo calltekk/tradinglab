@@ -194,7 +194,7 @@ if mode == "Single Asset Strategy":
     c5.metric("Sharpe", f"{metrics['sharpe_ratio']:.2f}")
     c6.metric("Max Drawdown", format_percent(metrics["max_drawdown"]))
 
-    st.subheader("Plain English Summary")
+    st.subheader("TLDR")
 
     st.write(
         f"""
@@ -207,7 +207,7 @@ if mode == "Single Asset Strategy":
         """
     )
 
-    st.subheader("How to read this like a pro")
+    st.subheader("For the finance bros")
 
     st.markdown(
         """
