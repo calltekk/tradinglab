@@ -21,13 +21,24 @@ def format_percent(value: float) -> str:
     return f"{value:.2%}"
 
 
-def investment_decision(metrics: dict, latest_signal: int) -> tuple[bool, list[str]]:
+def investment_decision(
+    metrics: dict,
+    results: pd.DataFrame,
+    latest_signal: int,
+) -> tuple[bool, list[str]]:
     """
     Decides whether the strategy is worth investing in.
 
     This is different from simply checking whether the latest signal is 1.
     A signal only means the strategy is currently long.
-    This function checks whether the strategy has acceptable risk/reward.
+
+    The decision now checks:
+    - Current signal
+    - Annual return
+    - Sharpe ratio
+    - Max drawdown
+    - Volatility
+    - Strategy performance versus buy and hold
     """
 
     reasons = []
@@ -38,14 +49,20 @@ def investment_decision(metrics: dict, latest_signal: int) -> tuple[bool, list[s
     if metrics["annual_return"] <= 0:
         reasons.append("Annual return is not positive.")
 
-    if metrics["sharpe_ratio"] < 0.7:
-        reasons.append("Sharpe ratio is below 0.70.")
+    if metrics["sharpe_ratio"] < 0.4:
+        reasons.append("Sharpe ratio is too low (< 0.40).")
 
-    if metrics["max_drawdown"] <= -0.35:
-        reasons.append("Max drawdown is worse than -35%.")
+    if metrics["max_drawdown"] <= -0.50:
+        reasons.append("Max drawdown is worse than -50%.")
 
-    if metrics["annual_volatility"] >= 0.60:
-        reasons.append("Annual volatility is above 60%.")
+    if metrics["annual_volatility"] >= 0.80:
+        reasons.append("Annual volatility is extremely high (> 80%).")
+
+    strategy_final = results["strategy_equity"].iloc[-1]
+    buy_hold_final = results["buy_hold_equity"].iloc[-1]
+
+    if strategy_final < buy_hold_final * 0.8:
+        reasons.append("Strategy significantly underperforms buy & hold.")
 
     invest = len(reasons) == 0
 
@@ -207,7 +224,7 @@ if mode == "Single Asset Strategy":
     latest_signal = int(results["signal"].iloc[-1])
     final_value = results["strategy_equity"].iloc[-1]
 
-    invest, reasons = investment_decision(metrics, latest_signal)
+    invest, reasons = investment_decision(metrics, results, latest_signal)
 
     st.subheader("What should I do?")
 
